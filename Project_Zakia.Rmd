@@ -1,0 +1,205 @@
+---
+title: "Final project for Practical Machine learning algorimn"
+author: "Zakia Sultana"
+date: "December 27, 2015"
+output: html_document
+---
+
+**Background**
+---------------------------------------------------------
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+The information is available from the website here: http://groupware.les.inf.puc-rio.br/har
+
+
+Objectives
+---------------------------------------------------------
+The objectives of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. The model should explains cross validation,the expected out-of-sample error, and reason for final chose of model selection. Moreover, Final prediction model should be also tested to predict 20 different test cases.
+
+
+Summary of Analysis
+---------------------------------------------------------
+1.	Study the data and clean up accordingly.
+2.	Use cross-validation method to built a valid model where 70% of the training
+data is used for training and 30% for testing
+3. A decision tree method is used to predict the model
+4.  Random Forest method is used to predict two model, the first one use Principal
+component analysis(PCA)to reduce the number of predictable variables and second one
+used full cleaned data set to build the final model
+5. Check the model with the testing data set 
+6. Select the final accepted model and  Calculate out-of-sample error for that.	
+7.Apply the final model to estimate classes of 20 observations
+
+
+Outline
+---------------------------------------------------------
+Our outcome variable is classe, a factor variable with 5 levels. For this data set, “participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions:
+- exactly according to the specification (Class A)
+- throwing the elbows to the front (Class B)
+- lifting the dumbbell only halfway (Class C)
+- lowering the dumbbell only halfway (Class D)
+- throwing the hips to the front (Class E)
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes." [1] Prediction evaluations will be based on maximizing the accuracy and minimizing the out-of-sample error. Models will be tested using decision tree and random forest algorithms. The model with the highest accuracy will be chosen as our final model.
+
+Load  data and packagegs
+---------------------------------------------------------
+```{r}
+library(caret);library(randomForest);library(rpart); library(rpart.plot);library(rattle);
+library(AppliedPredictiveModeling);library(ggplot2)
+set.seed(1234)
+
+train_data <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+test_data <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+Observation of data set 
+---------------------------------------------------------
+
+```{r}
+#names(train_data)
+#head(train_data)
+dim(train_data) 
+dim(test_data)
+table(train_data$classe)  
+
+```
+Clean the data set
+---------------------------------------------------------
+It's very big dataset with 19622 rows and 160 columns with lots of missing values. So data cleaning
+needs to be done before starting to predict the m/c learning algorithm.
+```{r}
+# Delete columns with all missing values
+train_data <- train_data[,colSums(is.na(train_data)) == 0]
+test_data <- test_data[,colSums(is.na(test_data)) == 0]
+
+# Some variables(column no 1 to 7) are not required to this project: We can delete these variables.
+train_data  <- train_data[,-c(1:7)]
+test_data <- test_data[,-c(1:7)]
+dim(train_data)
+dim(test_data)  
+
+
+```
+Split Training Data for model selection  and  Cross-Validation
+---------------------------------------------------------
+```{r}
+# training data is partioned according to 70%  and 30% set with classe varibles 
+train_Index <- createDataPartition(y=train_data$classe, p=0.70, list=FALSE)
+train_project <- train_data[train_Index , ] 
+test_project <- train_data[-train_Index , ]
+dim(train_project) 
+dim(test_project) 
+
+```
+Plot the partioned data to see the pattern
+---------------------------------------------------------
+```{r}
+
+plot(train_project$classe, col="green", main="Plot of different levels of the variable classe ", xlab="classe levels", ylab="Frequency")
+```
+ The frequency of variations between differnt  classe levels are within the same order of magnitude of each other.
+First Modelling algorithm (Decision Tree method)
+---------------------------------------------------------
+```{r}
+zz <- modFit <- train(classe ~ .,method="rpart",data=train_project) 
+zz
+print(modFit$finalModel)
+#Plot tree
+plot(modFit$finalModel, uniform=TRUE,main="Classification Tree")
+text(modFit$finalModel, use.n=TRUE, all=TRUE, cex=.8)
+
+#Prettier plots
+fancyRpartPlot(modFit$finalModel)
+#Cross Validation
+prediction1 <- predict(modFit,newdata=test_project) 
+
+# Test results on our partioned test data set:
+confusionMatrix(prediction1, test_project$classe)
+
+```
+Random Forest Method method is used for second algorithm, but although we expected to get very good accuracy from this method, big data set like this project using this method is very time consuming.
+Since the number of variables are 53, preprocessing can be done on the data with Principal  ComponentsAnalysis(PCA) to work on a compartively smaller data set with lower numbers of variables.
+We can also guess the lower limit of the expected accuracy of model using Random forest method and the upper limit of out-of-sample error before by this.
+
+Preprocessing with Principal ComponentsAnalysis (PCA)
+---------------------------------------------------------
+
+Since the number of variables are 53, PCA is applied with 95% of variance capture
+```{r}
+
+preProc <- preProcess(train_project[,1:52],method="pca",thresh=.95) 
+#around 25 variables are needed to capturee 95% variation
+preProc <- preProcess(train_project[,1:52],method="pca",pcaComp=25) 
+#preProc$rotation 
+trainPC <- predict(preProc,train_project[,1:52])
+names(preProc) 
+#Apply ramdom forest method on these data with PCA 
+modFitRF <- randomForest(train_project$classe ~ .,   data=trainPC, do.trace=F)
+print(modFitRF) 
+#importance(modFitRF) # importance of each predictor
+#Check with test set  Cross Validation
+testPC <- predict(preProc,test_project)
+confusionMatrix(test_project$classe,predict(modFitRF,testPC))
+
+```
+As expected, Random Forest algorithm performed better than Decision Trees.
+Accuracy for Random Forest model was 0.9786 compared to 0.489 for Decision Tree model.
+The expected out-of-sample error will be lower than 3% when if we use full data set. 
+The random Forest model is choosen for final prediction algorithm.
+
+Random Forest method without PCA
+---------------------------------------------------------
+
+```{r}
+model2 <- randomForest(classe ~. , data=train_project, method="class")
+# Cross Validation
+prediction2 <- predict(model2, test_project, type = "class")
+# Test results on our partioned test data set:
+confusionMatrix(prediction2, test_project$classe)
+
+```
+Accuracy and Selection of final predicated model
+---------------------------------------------------------
+As expected, Random Forest algorithm with all variables performed better than with PCA. Accuracy for Random Forest model was 0.9966 compared to 0.489 for Decision Tree model. If time becomes a constraint than we can go for Random Forest model with PCA which accuracy is above 97%. So, The random Forest model is choosen for final prediction algorithm. The accuracy of the final model is 0.9966. 
+
+Out-of-sample error based on final model
+---------------------------------------------------------
+The expected out-of-sample error is estimated at 0.0034, or 0.34%. The expected out-of-sample error is calculated as 1 - accuracy for predictions made against the cross-validation set. This value is much lower than the value(3%) of expected out-sample-error on small data using PCA.
+```{r}
+
+final_model_accuracy <- 0.9966  
+
+sample_error_outof <- 1- final_model_accuracy
+sample_error_outof 
+```
+
+ Our Test data set inclueds 20 cases. With an accuracy above 99% on our cross-validation data, we can expect very little missclassification from this predicted model.
+
+
+Test Data Prediction on original testing data set
+---------------------------------------------------------
+
+```{r}
+
+predictfinal <- predict(model2, test_data, type="class")
+predictfinal
+```
+
+
+Write files for submission for assignment
+---------------------------------------------------------
+```{r}
+project_output_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+
+project_output_files(predictfinal)
+```
+ References
+---------------------------------------------------------
+ [1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human ’13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+
